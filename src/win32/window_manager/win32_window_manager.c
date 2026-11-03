@@ -12,6 +12,7 @@ typedef HRESULT w32_GetDpiForMonitor_Type(HMONITOR hmonitor, MONITOR_DPI_TYPE dp
 typedef int w32_GetSystemMetricsForDpi_Type(int nIndex, UINT dpi);
 #define w32_DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((void*)-4)
 global w32_GetDpiForWindow_Type *w32_GetDpiForWindow_func = 0;
+global U32 w32_wm_pending_high_surrogate = 0;
 global w32_GetDpiForMonitor_Type *w32_GetDpiForMonitor_func = 0;
 global w32_GetSystemMetricsForDpi_Type *w32_GetSystemMetricsForDpi_func = 0;
 
@@ -505,7 +506,24 @@ w32_wm_wnd_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
       
       case WM_CHAR:
       {
-        U32 character = wParam;
+        U32 character = (U32)wParam;
+        
+        // rjf: combine UTF-16 surrogate pairs (e.g. emoji, CJK ext. B+) into one codepoint
+        if(0xD800 <= character && character <= 0xDBFF)
+        {
+          w32_wm_pending_high_surrogate = character;
+          break;
+        }
+        else if(0xDC00 <= character && character <= 0xDFFF)
+        {
+          if(w32_wm_pending_high_surrogate == 0)
+          {
+            break;
+          }
+          character = 0x10000 + ((w32_wm_pending_high_surrogate - 0xD800) << 10) + (character - 0xDC00);
+        }
+        w32_wm_pending_high_surrogate = 0;
+        
         if((character >= 32 && character != 127) || character == '\r')
         {
           WM_Event *event = w32_wm_push_event(WM_EventKind_Text, window);

@@ -8,6 +8,8 @@
 //~ rjf: Includes
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <locale.h>
 #include <X11/Xatom.h>
 #include <X11/cursorfont.h>
 #include <X11/extensions/sync.h>

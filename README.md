@@ -243,6 +243,7 @@ The debugger project relies on a few dynamically linked libraries being present
 on the system:
 
 - `libfreetype`
+- `libfontconfig`
 - `libx11`
 - `libxext`
 - `libxfixes`
@@ -256,13 +257,13 @@ installed using one of the following commands, depending on your distribution:
 #### Ubuntu / Debian / Mint 
 
 ```
-sudo apt install -y libfreetype6-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libgl-dev libegl-dev
+sudo apt install -y libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libgl-dev libegl-dev
 ```
 
 #### Arch / Manjaro
 
 ```
-sudo pacman -S --needed freetype2 libx11 libxext libxfixes libxrandr libglvnd
+sudo pacman -S --needed freetype2 fontconfig libx11 libxext libxfixes libxrandr libglvnd
 ```
 
 ### 3. Building

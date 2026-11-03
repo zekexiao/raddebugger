@@ -29,13 +29,13 @@ cc_link="-lpthread -lm -lrt -ldl"
 cc_link_dll="-fPIC"
 
 # --- External Libraries ------------------------------------------------------
-# sudo apt install -y pkg-config libfreetype6-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libgl-dev libegl-dev
+# sudo apt install -y pkg-config libfreetype6-dev libfontconfig1-dev libx11-dev libxext-dev libxfixes-dev libxrandr-dev libgl-dev libegl-dev
 if [[ -x "$(command -v pkg-config)" ]]; then
-  cc_font_provider="$(pkg-config --cflags --libs freetype2)"  
+  cc_font_provider="$(pkg-config --cflags --libs freetype2 fontconfig)"  
   cc_os_gfx="$(pkg-config --cflags --libs x11 xext xfixes xrandr)"
   cc_render="$(pkg-config --cflags --libs gl egl)"
 else
-  cc_font_provider="-I/usr/include/freetype2 -lfreetype"
+  cc_font_provider="-I/usr/include/freetype2 -lfreetype -lfontconfig"
   cc_os_gfx="-lX11 -lXext -lXfixes -lXrandr"
   cc_render="-lGL -lEGL"
 fi

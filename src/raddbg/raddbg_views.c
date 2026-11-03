@@ -193,6 +193,11 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
         Rng1U64 next_line_range = txt_range_from_line_num(&text_patched.line_map, line_num+1);
         *cursor = next_line_range.min + *preferred_column;
         *cursor = clamp_1u64(next_line_range, *cursor);
+        String8 next_line = memory_map_data_from_range(scratch.arena, &text_patched.memory_map, next_line_range);
+        while(*cursor > next_line_range.min && *cursor - next_line_range.min < next_line.size && (next_line.str[*cursor - next_line_range.min] & 0xC0) == 0x80)
+        {
+          *cursor -= 1;
+        }
       }
       
       //- rjf: movement up (plain)
@@ -201,6 +206,11 @@ rd_code_view_build(Arena *arena, RD_CodeViewState *cv, RD_CodeViewBuildFlags fla
         Rng1U64 prev_line_range = txt_range_from_line_num(&text_patched.line_map, line_num-1);
         *cursor = prev_line_range.min + *preferred_column;
         *cursor = clamp_1u64(prev_line_range, *cursor);
+        String8 prev_line = memory_map_data_from_range(scratch.arena, &text_patched.memory_map, prev_line_range);
+        while(*cursor > prev_line_range.min && *cursor - prev_line_range.min < prev_line.size && (prev_line.str[*cursor - prev_line_range.min] & 0xC0) == 0x80)
+        {
+          *cursor -= 1;
+        }
       }
       
       //- rjf: movement down (chunk)

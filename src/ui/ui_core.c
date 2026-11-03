@@ -105,7 +105,7 @@ ui_eat_event_node(UI_EventList *list, UI_EventNode *node)
 internal B32
 ui_char_is_scan_boundary(U8 c)
 {
-  return (char_is_alpha(c) || char_is_digit(c, 10) || c == '_');
+  return (char_is_alpha(c) || char_is_digit(c, 10) || c == '_' || c >= 0x80);
 }
 
 internal S64
@@ -158,8 +158,18 @@ ui_single_line_txt_op_from_event(Arena *arena, UI_Event *event, String8 string, 
     default:{}break;
     case UI_EventDeltaUnit_Char:
     {
-      // TODO(rjf): this should account for multi-byte characters in UTF-8... for now, just assume ASCII and
-      // no-op
+      S64 start_off = (S64)(cursor - cursor_range.min);
+      S64 off = start_off;
+      for(S32 step_idx = 0; step_idx < (S32)abs_s64(delta.x); step_idx += 1)
+      {
+        S64 step = (delta.x > 0) ? +1 : -1;
+        off += step;
+        while(0 < off && off < (S64)string.size && (string.str[off] & 0xC0) == 0x80)
+        {
+          off += step;
+        }
+      }
+      delta.x = (S32)(off - start_off);
     }break;
     case UI_EventDeltaUnit_Word:
     {

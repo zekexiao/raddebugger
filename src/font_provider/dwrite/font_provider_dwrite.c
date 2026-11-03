@@ -87,6 +87,114 @@ fp_dwrite_font_file_stream_node_release(FP_DWrite_FontFileStreamNode *node)
   SLLStackPush(fp_dwrite_state->free_stream_node, node);
 }
 
+//- rjf: fallback fonts
+
+internal IDWriteFontFace *
+fp_dwrite_face_from_codepoint(IDWriteFontFace *primary_face, U32 codepoint, U16 *glyph_index_out)
+{
+  IDWriteFontFace *result = primary_face;
+  U16 glyph_index = 0;
+  IDWriteFontFace_GetGlyphIndices(primary_face, &codepoint, 1, &glyph_index);
+  U64 missing_slot_idx = codepoint%ArrayCount(fp_dwrite_state->missing_codepoint_cache);
+  if(glyph_index == 0 && codepoint >= 0x80 && fp_dwrite_state->missing_codepoint_cache[missing_slot_idx] != codepoint+1)
+  {
+    B32 found = 0;
+    
+    //- rjf: try already-opened fallback faces
+    for(FP_DWrite_FallbackFace *n = fp_dwrite_state->first_fallback_face; n != 0; n = n->next)
+    {
+      U16 fallback_glyph_index = 0;
+      IDWriteFontFace_GetGlyphIndices(n->face, &codepoint, 1, &fallback_glyph_index);
+      if(fallback_glyph_index != 0)
+      {
+        result = n->face;
+        glyph_index = fallback_glyph_index;
+        found = 1;
+        break;
+      }
+    }
+    
+    //- rjf: search system fonts - preferred families first, then all families
+    IDWriteFontCollection *collection = fp_dwrite_state->system_font_collection;
+    if(!found && collection != 0)
+    {
+      U64 preferred_count = fp_dwrite_state->fallback_family_names_count;
+      U64 family_count = (U64)IDWriteFontCollection_GetFontFamilyCount(collection);
+      for(U64 task_idx = 0; !found && task_idx < preferred_count + family_count; task_idx += 1)
+      {
+        UINT32 family_idx = 0;
+        if(task_idx < preferred_count)
+        {
+          BOOL exists = 0;
+          IDWriteFontCollection_FindFamilyName(collection, fp_dwrite_state->fallback_family_names[task_idx], &family_idx, &exists);
+          if(!exists)
+          {
+            continue;
+          }
+        }
+        else
+        {
+          family_idx = (UINT32)(task_idx - preferred_count);
+        }
+        IDWriteFontFamily *family = 0;
+        IDWriteFont *font = 0;
+        IDWriteFontFace *face = 0;
+        BOOL has_character = 0;
+        IDWriteFontCollection_GetFontFamily(collection, family_idx, &family);
+        if(family != 0)
+        {
+          IDWriteFontFamily_GetFirstMatchingFont(family, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_NORMAL, &font);
+        }
+        if(font != 0)
+        {
+          IDWriteFont_HasCharacter(font, codepoint, &has_character);
+        }
+        if(has_character)
+        {
+          IDWriteFont_CreateFontFace(font, &face);
+        }
+        if(face != 0)
+        {
+          U16 fallback_glyph_index = 0;
+          IDWriteFontFace_GetGlyphIndices(face, &codepoint, 1, &fallback_glyph_index);
+          if(fallback_glyph_index != 0)
+          {
+            FP_DWrite_FallbackFace *n = push_array(fp_dwrite_state->arena, FP_DWrite_FallbackFace, 1);
+            n->face = face;
+            SLLQueuePush(fp_dwrite_state->first_fallback_face, fp_dwrite_state->last_fallback_face, n);
+            result = face;
+            glyph_index = fallback_glyph_index;
+            found = 1;
+          }
+          else
+          {
+            IDWriteFontFace_Release(face);
+          }
+        }
+        if(font != 0)
+        {
+          IDWriteFont_Release(font);
+        }
+        if(family != 0)
+        {
+          IDWriteFontFamily_Release(family);
+        }
+      }
+    }
+    
+    //- rjf: no font has it -> remember, to avoid repeated system font scans
+    if(!found)
+    {
+      fp_dwrite_state->missing_codepoint_cache[missing_slot_idx] = codepoint+1;
+    }
+  }
+  if(glyph_index_out != 0)
+  {
+    *glyph_index_out = glyph_index;
+  }
+  return result;
+}
+
 //- rjf: iunknown no-op helpers
 
 internal HRESULT
@@ -308,6 +416,52 @@ fp_init(void)
     }
   }
   
+  //- rjf: get system font collection & fallback family preferences, for glyphs missing from the chosen font
+  error = IDWriteFactory_GetSystemFontCollection(fp_dwrite_state->factory, &fp_dwrite_state->system_font_collection, 0);
+  {
+    WCHAR locale_name[LOCALE_NAME_MAX_LENGTH] = {0};
+    GetUserDefaultLocaleName(locale_name, LOCALE_NAME_MAX_LENGTH);
+    WCHAR *locale_first_family = L"Microsoft YaHei UI";
+    if(locale_name[0] == L'j' && locale_name[1] == L'a')
+    {
+      locale_first_family = L"Yu Gothic UI";
+    }
+    else if(locale_name[0] == L'k' && locale_name[1] == L'o')
+    {
+      locale_first_family = L"Malgun Gothic";
+    }
+    else if(locale_name[0] == L'z' && locale_name[1] == L'h' &&
+            (wcsstr(locale_name, L"TW") || wcsstr(locale_name, L"HK") || wcsstr(locale_name, L"MO") || wcsstr(locale_name, L"Hant")))
+    {
+      locale_first_family = L"Microsoft JhengHei UI";
+    }
+    WCHAR *families[] =
+    {
+      locale_first_family,
+      L"Microsoft YaHei UI",
+      L"Microsoft YaHei",
+      L"SimSun",
+      L"Microsoft JhengHei UI",
+      L"Yu Gothic UI",
+      L"Meiryo UI",
+      L"Malgun Gothic",
+      L"Segoe UI",
+      L"Segoe UI Symbol",
+      L"Segoe UI Emoji",
+      L"Nirmala UI",
+      L"Leelawadee UI",
+      L"Ebrima",
+    };
+    for EachElement(idx, families)
+    {
+      if(fp_dwrite_state->fallback_family_names_count < ArrayCount(fp_dwrite_state->fallback_family_names))
+      {
+        fp_dwrite_state->fallback_family_names[fp_dwrite_state->fallback_family_names_count] = families[idx];
+        fp_dwrite_state->fallback_family_names_count += 1;
+      }
+    }
+  }
+  
   //- rjf: make dwrite gdi interop
   error = IDWriteFactory_GetGdiInterop(fp_dwrite_state->factory, &fp_dwrite_state->gdi_interop);
   
@@ -471,19 +625,34 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, S
   }
   F32 design_units_per_em = (F32)font_metrics.designUnitsPerEm;
   
-  //- rjf: get glyph indices
-  U16 *glyph_indices = push_array_no_zero(scratch.arena, U16, string32.size);
+  //- rjf: get glyph indices & faces (falling back to system fonts for glyphs missing from this font)
+  U64 glyphs_count = string32.size;
+  U16 *glyph_indices = push_array(scratch.arena, U16, glyphs_count);
+  IDWriteFontFace **glyph_faces = push_array(scratch.arena, IDWriteFontFace *, glyphs_count);
   if(font.face != 0)
   {
-    error = IDWriteFontFace_GetGlyphIndices(font.face, string32.str, string32.size, glyph_indices);
+    for EachIndex(idx, glyphs_count)
+    {
+      glyph_faces[idx] = fp_dwrite_face_from_codepoint(font.face, string32.str[idx], &glyph_indices[idx]);
+    }
   }
   
   //- rjf: get metrics info
-  U64 glyphs_count = string32.size;
-  DWRITE_GLYPH_METRICS *glyphs_metrics = push_array_no_zero(scratch.arena, DWRITE_GLYPH_METRICS, glyphs_count);
+  DWRITE_GLYPH_METRICS *glyphs_metrics = push_array(scratch.arena, DWRITE_GLYPH_METRICS, glyphs_count);
+  F32 *glyphs_design_units_per_em = push_array(scratch.arena, F32, glyphs_count);
   if(font.face != 0)
   {
-    error = IDWriteFontFace_GetGdiCompatibleGlyphMetrics(font.face, (96.f/72.f)*size, 1.f, 0, 1, glyph_indices, glyphs_count, glyphs_metrics, 0);
+    for EachIndex(idx, glyphs_count)
+    {
+      IDWriteFontFace *glyph_face = glyph_faces[idx];
+      DWRITE_FONT_METRICS glyph_font_metrics = font_metrics;
+      if(glyph_face != font.face)
+      {
+        IDWriteFontFace_GetMetrics(glyph_face, &glyph_font_metrics);
+      }
+      glyphs_design_units_per_em[idx] = (F32)glyph_font_metrics.designUnitsPerEm;
+      error = IDWriteFontFace_GetGdiCompatibleGlyphMetrics(glyph_face, (96.f/72.f)*size, 1.f, 0, 1, &glyph_indices[idx], 1, &glyphs_metrics[idx], 0);
+    }
   }
   
   //- rjf: derive info from metrics
@@ -491,22 +660,25 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, S
   Vec2S16 atlas_dim = {0};
   F32 left_side_bearing = 0;
   F32 right_side_bearing = 0;
+  F32 *glyph_advances = push_array(scratch.arena, F32, glyphs_count);
   if(font.face != 0)
   {
     atlas_dim.y = (S16)round_f32((96.f/72.f) * size * (font_metrics.ascent + font_metrics.descent + font_metrics.lineGap) / design_units_per_em) + 1;
     for(U64 idx = 0; idx < glyphs_count; idx += 1)
     {
       DWRITE_GLYPH_METRICS *glyph_metrics = glyphs_metrics + idx;
-      F32 glyph_advance_width         = (96.f/72.f) * size * glyph_metrics->advanceWidth       / design_units_per_em;
+      F32 glyph_design_units_per_em = glyphs_design_units_per_em[idx];
+      F32 glyph_advance_width         = (96.f/72.f) * size * glyph_metrics->advanceWidth       / glyph_design_units_per_em;
+      glyph_advances[idx] = glyph_advance_width;
       advance += glyph_advance_width;
       atlas_dim.x = Max(atlas_dim.x, (S16)(advance+1));
       if(idx == 0)
       {
-        left_side_bearing = (96.f/72.f) * size * glyph_metrics->leftSideBearing    / design_units_per_em;
+        left_side_bearing = (96.f/72.f) * size * glyph_metrics->leftSideBearing    / glyph_design_units_per_em;
       }
       if(idx+1 == glyphs_count)
       {
-        right_side_bearing = (96.f/72.f) * size * glyph_metrics->rightSideBearing   / design_units_per_em;
+        right_side_bearing = (96.f/72.f) * size * glyph_metrics->rightSideBearing   / glyph_design_units_per_em;
       }
     }
     atlas_dim.x -= right_side_bearing;
@@ -545,14 +717,6 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, S
     draw_p.y -= descent;
     draw_p.y -= line_gap;
   }
-  DWRITE_GLYPH_RUN glyph_run = {0};
-  if(font.face != 0)
-  {
-    glyph_run.fontFace = font.face;
-    glyph_run.fontEmSize = size * 96.f/72.f;
-    glyph_run.glyphCount = string32.size;
-    glyph_run.glyphIndices = glyph_indices;
-  }
   RECT bounding_box = {0};
   if(font.face != 0)
   {
@@ -565,12 +729,30 @@ fp_raster(Arena *arena, FP_Handle font_handle, F32 size, FP_RasterFlags flags, S
       case FP_RasterFlag_Smooth:{rendering_params = fp_dwrite_state->rendering_params_smooth_unhinted;}break;
       case FP_RasterFlag_Smooth|FP_RasterFlag_Hinted:{rendering_params = fp_dwrite_state->rendering_params_smooth_hinted;}break;
     }
-    error = IDWriteBitmapRenderTarget_DrawGlyphRun(render_target, draw_p.x, draw_p.y,
-                                                   DWRITE_MEASURING_MODE_NATURAL,
-                                                   &glyph_run,
-                                                   rendering_params,
-                                                   fg_color,
-                                                   &bounding_box);
+    
+    // rjf: draw one glyph run per contiguous range of glyphs sharing a font face
+    F32 run_x = draw_p.x;
+    for(U64 run_start_idx = 0; run_start_idx < glyphs_count;)
+    {
+      U64 run_end_idx = run_start_idx+1;
+      for(;run_end_idx < glyphs_count && glyph_faces[run_end_idx] == glyph_faces[run_start_idx]; run_end_idx += 1);
+      DWRITE_GLYPH_RUN glyph_run = {0};
+      glyph_run.fontFace = glyph_faces[run_start_idx];
+      glyph_run.fontEmSize = size * 96.f/72.f;
+      glyph_run.glyphCount = (UINT32)(run_end_idx - run_start_idx);
+      glyph_run.glyphIndices = glyph_indices + run_start_idx;
+      error = IDWriteBitmapRenderTarget_DrawGlyphRun(render_target, run_x, draw_p.y,
+                                                     DWRITE_MEASURING_MODE_NATURAL,
+                                                     &glyph_run,
+                                                     rendering_params,
+                                                     fg_color,
+                                                     &bounding_box);
+      for(U64 idx = run_start_idx; idx < run_end_idx; idx += 1)
+      {
+        run_x += glyph_advances[idx];
+      }
+      run_start_idx = run_end_idx;
+    }
   }
   
   //- rjf: get bitmap

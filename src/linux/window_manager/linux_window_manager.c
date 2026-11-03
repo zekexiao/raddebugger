@@ -371,8 +371,15 @@ wm_init(void)
     }
   }
   
-  //- rjf: open im
+  //- rjf: open im (pick up the user's locale so that input methods, e.g. for CJK, can connect)
+  setlocale(LC_CTYPE, "");
+  XSetLocaleModifiers("");
   lnx_wm_state->xim = XOpenIM(lnx_wm_state->display, 0, 0, 0);
+  if(lnx_wm_state->xim == 0)
+  {
+    XSetLocaleModifiers("@im=none");
+    lnx_wm_state->xim = XOpenIM(lnx_wm_state->display, 0, 0, 0);
+  }
   
   //- rjf: fill out default gfx info
   lnx_wm_state->gfx_info.double_click_time = 0.5f;
@@ -1166,6 +1173,10 @@ wm_get_events(Arena *arena, B32 wait)
       //- rjf: get next event
       XEvent evt = {0};
       XNextEvent(lnx_wm_state->display, &evt);
+      if(XFilterEvent(&evt, None))
+      {
+        continue;
+      }
       
       //- rjf: do event response
       B32 set_mouse_cursor = 0;
@@ -1264,7 +1275,20 @@ wm_get_events(Arena *arena, B32 wait)
           LNX_WM_Window *window = lnx_window_from_x11window(evt.xkey.window);
           KeySym keysym = 0;
           U8 text[256] = {0};
-          U64 text_size = Xutf8LookupString(window->xic, &evt.xkey, (char *)text, sizeof(text), &keysym, 0);
+          U64 text_size = 0;
+          if(window != 0 && window->xic != 0)
+          {
+            Status status = 0;
+            text_size = Xutf8LookupString(window->xic, &evt.xkey, (char *)text, sizeof(text)-1, &keysym, &status);
+            if(status != XLookupChars && status != XLookupBoth)
+            {
+              text_size = 0;
+            }
+          }
+          else
+          {
+            text_size = XLookupString(&evt.xkey, (char *)text, sizeof(text)-1, &keysym, 0);
+          }
           
           // rjf: map keysym -> WM_Key
           B32 is_right_sided = 0;
@@ -1427,10 +1451,19 @@ wm_get_events(Arena *arena, B32 wait)
         //- rjf: window focus/unfocus
         case FocusIn:
         {
+          LNX_WM_Window *window = lnx_window_from_x11window(evt.xfocus.window);
+          if(window != 0 && window->xic != 0)
+          {
+            XSetICFocus(window->xic);
+          }
         }break;
         case FocusOut:
         {
           LNX_WM_Window *window = lnx_window_from_x11window(evt.xfocus.window);
+          if(window != 0 && window->xic != 0)
+          {
+            XUnsetICFocus(window->xic);
+          }
           WM_Event *e = wm_event_list_push_new(arena, &evts, WM_EventKind_WindowLoseFocus);
           e->window.u64[0] = (U64)window;
         }break;

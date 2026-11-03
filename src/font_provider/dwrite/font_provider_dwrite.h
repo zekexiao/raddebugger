@@ -88,6 +88,18 @@ typedef enum DWRITE_FONT_FACE_TYPE {
   DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION = 2,
 } DWRITE_FONT_FACE_TYPE;
 
+typedef enum DWRITE_FONT_WEIGHT {
+  DWRITE_FONT_WEIGHT_NORMAL = 400,
+} DWRITE_FONT_WEIGHT;
+
+typedef enum DWRITE_FONT_STRETCH {
+  DWRITE_FONT_STRETCH_NORMAL = 5,
+} DWRITE_FONT_STRETCH;
+
+typedef enum DWRITE_FONT_STYLE {
+  DWRITE_FONT_STYLE_NORMAL = 0,
+} DWRITE_FONT_STYLE;
+
 typedef enum DWRITE_GRID_FIT_MODE {
   DWRITE_GRID_FIT_MODE_DEFAULT  = 0,
   DWRITE_GRID_FIT_MODE_DISABLED = 1,
@@ -108,6 +120,9 @@ typedef struct IDWriteFontFile                 { struct { void* tbl[]; }* v; } I
 typedef struct IDWriteFontFace                 { struct { void* tbl[]; }* v; } IDWriteFontFace;
 typedef struct IDWriteFontFace1                { struct { void* tbl[]; }* v; } IDWriteFontFace1;
 typedef struct IDWriteFontFace2                { struct { void* tbl[]; }* v; } IDWriteFontFace2;
+typedef struct IDWriteFontCollection           { struct { void* tbl[]; }* v; } IDWriteFontCollection;
+typedef struct IDWriteFontFamily               { struct { void* tbl[]; }* v; } IDWriteFontFamily;
+typedef struct IDWriteFont                     { struct { void* tbl[]; }* v; } IDWriteFont;
 typedef struct IDWriteGdiInterop               { struct { void* tbl[]; }* v; } IDWriteGdiInterop;
 typedef struct IDWriteBitmapRenderTarget       { struct { void* tbl[]; }* v; } IDWriteBitmapRenderTarget;
 typedef struct IDWriteBitmapRenderTarget1      { struct { void* tbl[]; }* v; } IDWriteBitmapRenderTarget1;
@@ -193,6 +208,15 @@ static inline void                              IDWriteFontFace_GetMetrics      
 static inline UINT32                            IDWriteFontFile_Release                                      (IDWriteFontFile* this_) { return ((UINT32 (WINAPI*)(IDWriteFontFile*))this_->v->tbl[2])(this_); }
 static inline HRESULT                           IDWriteFontFace_GetGlyphIndices                              (IDWriteFontFace* this_, const UINT32* codePoints, UINT32 codePointCount, UINT16* glyphIndices) { return ((HRESULT (WINAPI*)(IDWriteFontFace*, const UINT32*, UINT32, UINT16*))this_->v->tbl[11])(this_, codePoints, codePointCount, glyphIndices); }
 static inline HRESULT                           IDWriteFontFace_GetGdiCompatibleGlyphMetrics                 (IDWriteFontFace* this_, FLOAT emSize, FLOAT pixelsPerDip, const DWRITE_MATRIX* transform, BOOL useGdiNatural, const UINT16* glyphIndices, UINT32 glyphCount, DWRITE_GLYPH_METRICS* glyphMetrics, BOOL isSideways) { return ((HRESULT (WINAPI*)(IDWriteFontFace*, FLOAT, FLOAT, const DWRITE_MATRIX*, BOOL, const UINT16*, UINT32, DWRITE_GLYPH_METRICS*, BOOL))this_->v->tbl[17])(this_, emSize, pixelsPerDip, transform, useGdiNatural, glyphIndices, glyphCount, glyphMetrics, isSideways); }
+static inline HRESULT                           IDWriteFactory_GetSystemFontCollection                       (IDWriteFactory* this_, IDWriteFontCollection** fontCollection, BOOL checkForUpdates) { return ((HRESULT (WINAPI*)(IDWriteFactory*, IDWriteFontCollection**, BOOL))this_->v->tbl[3])(this_, fontCollection, checkForUpdates); }
+static inline UINT32                            IDWriteFontCollection_GetFontFamilyCount                     (IDWriteFontCollection* this_) { return ((UINT32 (WINAPI*)(IDWriteFontCollection*))this_->v->tbl[3])(this_); }
+static inline HRESULT                           IDWriteFontCollection_GetFontFamily                          (IDWriteFontCollection* this_, UINT32 index, IDWriteFontFamily** fontFamily) { return ((HRESULT (WINAPI*)(IDWriteFontCollection*, UINT32, IDWriteFontFamily**))this_->v->tbl[4])(this_, index, fontFamily); }
+static inline HRESULT                           IDWriteFontCollection_FindFamilyName                         (IDWriteFontCollection* this_, const WCHAR* familyName, UINT32* index, BOOL* exists) { return ((HRESULT (WINAPI*)(IDWriteFontCollection*, const WCHAR*, UINT32*, BOOL*))this_->v->tbl[5])(this_, familyName, index, exists); }
+static inline HRESULT                           IDWriteFontFamily_GetFirstMatchingFont                       (IDWriteFontFamily* this_, DWRITE_FONT_WEIGHT weight, DWRITE_FONT_STRETCH stretch, DWRITE_FONT_STYLE style, IDWriteFont** matchingFont) { return ((HRESULT (WINAPI*)(IDWriteFontFamily*, DWRITE_FONT_WEIGHT, DWRITE_FONT_STRETCH, DWRITE_FONT_STYLE, IDWriteFont**))this_->v->tbl[7])(this_, weight, stretch, style, matchingFont); }
+static inline UINT32                            IDWriteFontFamily_Release                                    (IDWriteFontFamily* this_) { return ((UINT32 (WINAPI*)(IDWriteFontFamily*))this_->v->tbl[2])(this_); }
+static inline HRESULT                           IDWriteFont_HasCharacter                                     (IDWriteFont* this_, UINT32 unicodeValue, BOOL* exists) { return ((HRESULT (WINAPI*)(IDWriteFont*, UINT32, BOOL*))this_->v->tbl[12])(this_, unicodeValue, exists); }
+static inline HRESULT                           IDWriteFont_CreateFontFace                                   (IDWriteFont* this_, IDWriteFontFace** fontFace) { return ((HRESULT (WINAPI*)(IDWriteFont*, IDWriteFontFace**))this_->v->tbl[13])(this_, fontFace); }
+static inline UINT32                            IDWriteFont_Release                                          (IDWriteFont* this_) { return ((UINT32 (WINAPI*)(IDWriteFont*))this_->v->tbl[2])(this_); }
 static inline UINT32                            IDWriteBitmapRenderTarget_Release                            (IDWriteBitmapRenderTarget* this_) { return ((UINT32 (WINAPI*)(IDWriteBitmapRenderTarget*))this_->v->tbl[2])(this_); }
 
 ////////////////////////////////
@@ -246,6 +270,14 @@ struct FP_DWrite_FontFileStreamNode
   FP_DWrite_FontFileStream stream;
 };
 
+//- rjf: fallback font types
+typedef struct FP_DWrite_FallbackFace FP_DWrite_FallbackFace;
+struct FP_DWrite_FallbackFace
+{
+  FP_DWrite_FallbackFace *next;
+  IDWriteFontFace *face;
+};
+
 //- rjf: state & underlying handle types
 
 typedef struct FP_DWrite_State FP_DWrite_State;
@@ -265,6 +297,12 @@ struct FP_DWrite_State
   FP_DWrite_FontFileStreamNode *first_stream_node;
   FP_DWrite_FontFileStreamNode *last_stream_node;
   FP_DWrite_FontFileStreamNode *free_stream_node;
+  IDWriteFontCollection *system_font_collection;
+  WCHAR *fallback_family_names[16];
+  U64 fallback_family_names_count;
+  FP_DWrite_FallbackFace *first_fallback_face;
+  FP_DWrite_FallbackFace *last_fallback_face;
+  U32 missing_codepoint_cache[1024];
 };
 
 typedef struct FP_DWrite_Font FP_DWrite_Font;
@@ -284,6 +322,9 @@ internal FP_Handle fp_dwrite_handle_from_font(FP_DWrite_Font font);
 //- rjf: file stream allocator
 internal FP_DWrite_FontFileStreamNode *fp_dwrite_font_file_stream_node_alloc(String8 *data_ptr);
 internal void fp_dwrite_font_file_stream_node_release(FP_DWrite_FontFileStreamNode *node);
+
+//- rjf: fallback fonts
+internal IDWriteFontFace *fp_dwrite_face_from_codepoint(IDWriteFontFace *primary_face, U32 codepoint, U16 *glyph_index_out);
 
 //- rjf: iunknown no-op helpers
 internal HRESULT fp_dwrite_iunknown_noop__query_interface(void *obj, REFIID riid, void *ptr_to_object);
